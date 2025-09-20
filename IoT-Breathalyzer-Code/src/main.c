@@ -5,48 +5,65 @@
  */
 
 #include <stdio.h>
-#include <inttypes.h>
-#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "esp_chip_info.h"
-#include "esp_flash.h"
-#include "esp_system.h"
+#include "driver/gpio.h"
+#include "driver/ledc.h"
+#include "esp_wifi.h"
+
+#define BUZZER      GPIO_NUM_32
+#define RED_LED     GPIO_NUM_33
+#define GREEN_LED   GPIO_NUM_25
+
+#define LEDC_MODE LEDC_LOW_SPEED_MODE
+#define LEDC_TIMER LEDC_TIMER_0
+#define LEDC_CHANNEL LEDC_CHANNEL_0
+
+
 
 void app_main(void)
 {
-    printf("Hello world!\n");
+    // Replace with your actual Wi-Fi network name and password
+    const char* ssid = "SSID_HERE";
+    const char* password = "PASSWORD_HERE";
 
-    /* Print chip information */
-    esp_chip_info_t chip_info;
-    uint32_t flash_size;
-    esp_chip_info(&chip_info);
-    printf("This is %s chip with %d CPU core(s), %s%s%s%s, ",
-           CONFIG_IDF_TARGET,
-           chip_info.cores,
-           (chip_info.features & CHIP_FEATURE_WIFI_BGN) ? "WiFi/" : "",
-           (chip_info.features & CHIP_FEATURE_BT) ? "BT" : "",
-           (chip_info.features & CHIP_FEATURE_BLE) ? "BLE" : "",
-           (chip_info.features & CHIP_FEATURE_IEEE802154) ? ", 802.15.4 (Zigbee/Thread)" : "");
+    gpio_set_direction(BUZZER, GPIO_MODE_OUTPUT);
+    gpio_set_direction(RED_LED, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GREEN_LED, GPIO_MODE_OUTPUT);
+    gpio_set_direction(GPIO_NUM_2, GPIO_MODE_INPUT);
+    gpio_set_direction(GPIO_NUM_12, GPIO_MODE_INPUT);
 
-    unsigned major_rev = chip_info.revision / 100;
-    unsigned minor_rev = chip_info.revision % 100;
-    printf("silicon revision v%d.%d, ", major_rev, minor_rev);
-    if(esp_flash_get_size(NULL, &flash_size) != ESP_OK) {
-        printf("Get flash size failed");
-        return;
+    const int ledChannel = 0;
+    // Configure LEDC timer
+    ledc_timer_config_t ledc_timer = {
+        .speed_mode = LEDC_MODE,
+        .duty_resolution = 8,               // 8-bit (0-255)
+        .timer_num = LEDC_TIMER_0,
+        .freq_hz = 5000                     //5kHz PMW frequency
+    };
+    ledc_timer_config(&ledc_timer);
+
+    // Configure LEDC channel
+    ledc_channel_config_t ledc_channel = {
+        .gpio_num = RED_LED,
+        .speed_mode = LEDC_MODE,
+        .channel = LEDC_CHANNEL,
+        .timer_sel = LEDC_TIMER,
+        .duty = 0
+    };
+    ledc_channel_config(&ledc_channel);
+
+    while(true){
+        ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, 255);  //on at full brightness
+        ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+
+        ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, 255/2);  //on at half brightness
+        ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+        vTaskDelay(pdMS_TO_TICKS(2000));
+
+        ledc_set_duty(LEDC_MODE, LEDC_CHANNEL, 0);  //off
+        ledc_update_duty(LEDC_MODE, LEDC_CHANNEL);
+        vTaskDelay(pdMS_TO_TICKS(2000));
     }
-
-    printf("%" PRIu32 "MB %s flash\n", flash_size / (uint32_t)(1024 * 1024),
-           (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
-
-    printf("Minimum free heap size: %" PRIu32 " bytes\n", esp_get_minimum_free_heap_size());
-
-    for (int i = 10; i >= 0; i--) {
-        printf("Restarting in %d seconds...\n", i);
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
-    printf("Restarting now.\n");
-    fflush(stdout);
-    esp_restart();
 }
